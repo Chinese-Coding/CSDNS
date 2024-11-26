@@ -21,7 +21,7 @@ public class DNSName
     ///   * `MaxDNSNameLength` 表示一整个 DNSName 的长度不应该超过 255 个字节;
     ///   * `MaxLabelLength` 表示, DNSName 中的一个标签不应该超过 63 个字节
     /// </summary>
-    public const UInt16 MaxDNSNameLength = 255, MaxLabelLength = 63;
+    private const UInt16 MaxDNSNameLength = 255, MaxLabelLength = 63;
 
     private const Byte
         PointByte = (Byte)'.',
@@ -131,18 +131,10 @@ public class DNSName
                     goto case State.LabelIn;
                 case State.LabelIn:
                     if (b == BackslashByte)
-                    {
-                        state = State.BeginEscapeNumber;
                         goto case State.BeginEscapeNumber;
-                    }
-                    else if (b == PointByte)
-                    {
-                        state = State.LabelEnd; // 实际上这里的赋值是毫无意义的
+                    if (b == PointByte)
                         goto case State.LabelEnd;
-                    }
-                    else
-                        label.Add(b);
-
+                    label.Add(b);
                     break;
                 case State.LabelEnd:
                     if (label.Count > MaxLabelLength)
@@ -165,7 +157,6 @@ public class DNSName
                     }
 
                     break;
-
                 case State.InEscapeNumber:
                     if (IsDigit(b))
                     {
