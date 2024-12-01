@@ -17,7 +17,7 @@ public class DNSNameTest
         Assert.AreEqual(dnsName.ToString(), "www.bupt.edu.cn.");
         var dnsName2 = new DNSName("www.bupt.edu.cn.");
         Assert.AreEqual(dnsName2.ToString(trailing: false), "www.bupt.edu.cn");
-        // 超长字符串测试
+        // 合法长字符串测试
         var jpmens =
             "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc." +
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb." +
@@ -26,6 +26,15 @@ public class DNSNameTest
         var jpmensName = new DNSName(jpmens);
         Assert.AreEqual(jpmensName.ToString(), jpmens);
         Assert.ThrowsException<FormatException>(() => new DNSName("bert..Hubert."));
+
+        // 过长字符串测试(依次是 label 大于 63, DNSName 总长度大于 255)
+        Assert.ThrowsException<FormatException>(() =>
+            new DNSName("1234567890123456789012345678901234567890123456789012345678901234567890.com."));
+        Assert.ThrowsException<FormatException>(() =>
+            new DNSName(
+                "12345678901234567890.12345678901234567890123456.789012345678901.234567890.12345678901234567890." +
+                "12345678901234567890123456.789012345678901.234567890.12345678901234567890.12345678901234567890123456." +
+                "789012345678901.234567890.234567890.789012345678901.234567890.234567890.789012345678901.234567890.234567890.com."));
     }
 
     [TestMethod]
@@ -38,7 +47,7 @@ public class DNSNameTest
 
         DNSName name = new("."), parent = new();
         Assert.IsTrue(name != parent);
-        
+
         // TODO: 这里有两个比较函数没有实现 (因为看不懂具体含义), `<` 以及 `canonCompare`
     }
 
@@ -141,7 +150,7 @@ public class DNSNameTest
         build.AppendRawLabel("example");
         Assert.IsTrue(build.ToString() == @"Donald\032E\.\032Eastlake\0323rd.example.");
     }
-    
+
     /// <summary>
     /// 最重要的测试, 设计如何处理各种转义字符的问题
     /// </summary>

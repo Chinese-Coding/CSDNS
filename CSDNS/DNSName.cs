@@ -363,6 +363,8 @@ public class DNSName
                 case State.LabelEnd:
                     if (label.Count > MaxLabelLength)
                         throw new FormatException("DNSName 中存在标签长度超过 63 个字节的情况");
+                    if (1 + label.Count + retName.Count > MaxDNSNameLength)
+                        throw new FormatException("DNSName 中存在长度超过 255 个字节的情况");
                     retOffsets.Add(retName.Count);
                     retName.Add((Byte)label.Count);
                     retName.AddRange(label);
