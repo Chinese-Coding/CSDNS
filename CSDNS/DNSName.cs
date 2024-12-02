@@ -41,21 +41,12 @@ public class DNSName
     private Byte[] name;
     private Int32[] offsets; // 这个变量参考项目中没有我为了实现简单自己定义了一个
 
-
-    public DNSName()
-    {
-        name = [];
-        offsets = [];
-    }
-
-    public DNSName(DNSName rhs)
-    {
-        name = rhs.name;
-        offsets = rhs.offsets;
-    }
-
+    // @fmt:off
+    public DNSName() { name = []; offsets = []; }
+    public DNSName(DNSName rhs) { name = rhs.name; offsets = rhs.offsets; }
     // 从一个字符串解析为 dns
     public DNSName(String s) : this(Encoding.UTF8.GetBytes(s)) { }
+    // @fmt:on
 
     public DNSName(Byte[] bytes)
     {
@@ -113,17 +104,17 @@ public class DNSName
     /// <summary>
     /// 获取一个 DNSName 的所有标签; 使用 Bute[] 进行存储, 而不是像原来项目一样使用字符串进行存储
     /// </summary>
-    public List<Byte[]> GetRawLabels()
+    public Byte[][] GetRawLabels()
     {
-        var ret = new List<Byte[]>(offsets.Length);
-        foreach (var offset in offsets)
+        var ret = new Byte[offsets.Length][];
+        for (var i = 0; i < ret.Length; i++)
         {
+            var offset = offsets[i];
             var labelLength = name[offset];
-            if (labelLength == 0)
-                break;
+            if (labelLength == 0) break;
             var label = new Byte[labelLength];
             Array.Copy(name, offset + 1, label, 0, labelLength);
-            ret.Add(label);
+            ret[i] = label;
         }
 
         return ret;
@@ -211,11 +202,11 @@ public class DNSName
     // TODO: 这个函数的命名不是很合适, 应该是动词在前名词在后 (对函数来说如此)
     public DNSName LabelReverse()
     {
-        var ret = new DNSName();
         if (IsRoot()) return this;
+        var ret = new DNSName();
         if (Empty()) return ret;
         var labels = GetRawLabels();
-        labels.Reverse();
+        labels = labels.Reverse().ToArray();
         ret.AppendRawLabels(labels);
         return ret;
     }
@@ -232,28 +223,77 @@ public class DNSName
         if (name.Length + label.Length > MaxDNSNameLength - 1)
             throw new IndexOutOfRangeException(
                 $"新增的 dns name 长度 {name.Length + label.Length} 大于 DNSName 最大长度 {MaxDNSNameLength}");
-        var nameList = name.ToList();
-        var offsetsList = offsets.ToList();
-        if (Empty())
-        {
-            nameList.Add((Byte)label.Length);
-            nameList.AddRange(label);
-            nameList.Add(0);
-            name = nameList.ToArray();
-            offsets = [0];
-        }
-        else
-        {
-            nameList.Insert(0, (Byte)label.Length);
-            nameList.InsertRange(1, label);
-            var addLength = label.Length + 1;
-            for (var i = 1; i < offsetsList.Count; i++)
-                offsetsList[i] += addLength;
-            offsetsList.Insert(1, addLength);
-            name = nameList.ToArray();
-            offsets = offsetsList.ToArray();
-        }
+        
+        if (Empty()) return EmptyAppendAndPrependLawLabel(label);
 
+        var newName = new Byte[1 + label.Length + name.Length];
+        newName[0] = (Byte)label.Length;
+        Array.Copy(label, 0, newName, 1, label.Length);
+        Array.Copy(name, 0, newName, label.Length + 1, name.Length);
+        
+        var newOffsets = new Int32[1 + offsets.Length];
+        for(var i = 1; i < newOffsets.Length; i++) newOffsets[i] = offsets[i - 1] + label.Length + 1; 
+        
+        name = newName;
+        offsets = newOffsets;
+
+        return this;
+    }
+
+    public DNSName AppendRawLabel(String label) => AppendRawLabel(Encoding.UTF8.GetBytes(label));
+
+    public DNSName AppendRawLabel(Byte[] label)
+    {
+        CheckLabelLength(label.Length);
+
+        if (name.Length + label.Length > MaxDNSNameLength - 1)
+            throw new IndexOutOfRangeException(
+                $"新增的 dns name 长度 {name.Length + label.Length} 大于 DNSName 最大长度 {MaxDNSNameLength}");
+        if (Empty()) return EmptyAppendAndPrependLawLabel(label);
+
+        // +1 for label length byte, +1 for the trailing 0 byte
+        var newName = new Byte[name.Length + label.Length + 1];
+        name[^1] = (Byte)label.Length; // 直接修改原先存储 `0` 位置的, 然后再复制
+
+        Array.Copy(name, newName, name.Length);
+        Array.Copy(label, 0, newName, name.Length, label.Length);
+        newName[^1] = 0;
+
+        var newOffsets = new Int32[offsets.Length + 1];
+        Array.Copy(offsets, newOffsets, offsets.Length);
+        newOffsets[^1] = name.Length - 1; // 更新 offsets
+
+        name = newName;
+        offsets = newOffsets;
+        return this;
+    }
+
+    public Int32 GetLabelCount() => IsRoot() ? 0 : offsets.Length;
+
+    public Int32 CountLabels() => GetLabelCount(); // TODO: 这个函数纯纯是为了和参考项目中函数名对应才写的, 以后有机会删除它
+    
+    // @fmt:off
+    public void TrimToLabels(UInt32 to) { while (CountLabels() > to && ChopOff()) { } }
+    // @fmt:on
+
+    public Boolean IsRoot() => name.Length != 0 && name[0] == EndByte;
+
+    /// <summary>
+    /// 检查是否为通配型 DNSName
+    /// </summary>
+    public Boolean IsWildcard()
+    {
+        if (name.Length < 2) return false;
+        return name[0] == 1 && name[1] == (Byte)'*';
+    }
+
+    private DNSName EmptyAppendAndPrependLawLabel(Byte[] label)
+    {
+        name = new Byte[1 + label.Length + 1];
+        name[0] = (Byte)label.Length;
+        Array.Copy(label, 0, name, 1, label.Length);
+        name[^1] = 0;
+        offsets = [0];
         return this;
     }
 
@@ -270,10 +310,11 @@ public class DNSName
 
     /// <summary>
     /// 针对追加多个标签的情景进行了专属的优化, 省去了不少检查以及 List 和 Array 转化所造成的性能损失 (没测试过字节感觉性能损失不小)
+    /// 没有像 `AppendRawLabels` 一样使用数组,
+    /// 考虑到要追加的标签数量可能比较多, 若其中存在不合法的 label, 则之前分配的空间全部作废了, 不是很划算, 所以依旧使用 List 实现 
     /// </summary>
-    /// <param name="labels"></param>
     /// <exception cref="IndexOutOfRangeException"></exception>
-    private void AppendRawLabels(List<Byte[]> labels)
+    private void AppendRawLabels(Byte[][] labels)
     {
         var nameList = name.ToList();
         var offsetsList = offsets.ToList();
@@ -292,49 +333,6 @@ public class DNSName
         nameList.Add(0);
         name = nameList.ToArray();
         offsets = offsetsList.ToArray();
-    }
-
-    public DNSName AppendRawLabel(String label) => AppendRawLabel(Encoding.UTF8.GetBytes(label));
-
-    public DNSName AppendRawLabel(Byte[] label)
-    {
-        CheckLabelLength(label.Length);
-
-        if (name.Length + label.Length > MaxDNSNameLength - 1)
-            throw new IndexOutOfRangeException(
-                $"新增的 dns name 长度 {name.Length + label.Length} 大于 DNSName 最大长度 {MaxDNSNameLength}");
-        // 这里使用 List 来对 name 和 offsets 进行拼接操作 (也许不是最高效的方式?)
-        // 参考项目中有根据 label 的长度预先分配空间的代码, 但是 C# 并没有这么精细级别的操作, 所以没有把那部分代码抄过来
-        // 考虑到我是使用数组进行存储的, 这里我们假定数组是不可变的, 所以这里使用 List 进行拼接
-        var nameList = name.ToList();
-        var offsetsList = offsets.ToList();
-        if (!Empty()) nameList.RemoveAt(nameList.Count - 1);
-        offsetsList.Add(nameList.Count);
-        nameList.Add((Byte)label.Length);
-        nameList.AddRange(label);
-        nameList.Add(0);
-        name = nameList.ToArray();
-        offsets = offsetsList.ToArray();
-        return this;
-    }
-
-    public Int32 GetLabelCount() => offsets.Length;
-
-    public Int32 CountLabels() => offsets.Length; // TODO: 这个函数纯纯是为了和参考项目中函数名对应才写的, 以后有机会删除它
-    
-    // @fmt:off
-    public void TrimToLabels(UInt32 to) { while (CountLabels() > to && ChopOff()) { } }
-    // @fmt:on
-
-    public Boolean IsRoot() => name.Length != 0 && name[0] == EndByte;
-
-    /// <summary>
-    /// 检查是否为通配型 DNSName
-    /// </summary>
-    public Boolean IsWildcard()
-    {
-        if (name.Length < 2) return false;
-        return name[0] == 1 && name[1] == (Byte)'*';
     }
 
     private Boolean IsDigit(Byte b) => b is >= (Byte)'0' and <= (Byte)'9';

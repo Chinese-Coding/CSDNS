@@ -113,7 +113,7 @@ public class DNSNameTest
         {
             var before = "www.ds9a.nl.";
             var b = new DNSName(before);
-            Assert.AreEqual(b.GetRawLabels().Count, 3);
+            Assert.AreEqual(b.GetRawLabels().Length, 3);
             var after = b.ToString();
             Assert.AreEqual(before, after);
         }
@@ -179,7 +179,7 @@ public class DNSNameTest
         var labels = rfc4343_2_2.GetRawLabels();
         Assert.IsTrue(labels[0].SequenceEqual("Donald E. Eastlake 3rd"u8.ToArray()));
         Assert.IsTrue(labels[^1].SequenceEqual("example"u8.ToArray()));
-        Assert.IsTrue(labels.Count == 2);
+        Assert.IsTrue(labels.Length == 2);
     }
 
 
