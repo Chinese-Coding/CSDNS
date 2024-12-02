@@ -49,6 +49,17 @@ public class DNSNameTest
         Assert.IsTrue(name != parent);
 
         // TODO: 这里有两个比较函数没有实现 (因为看不懂具体含义), `<` 以及 `canonCompare`
+        
+        // +, 和 += 测试
+        DNSName dn = new("www."), powerdns = new("powerdns.com.");
+        var tot = dn + powerdns;
+        Assert.IsTrue(tot.ToString() == "www.powerdns.com.");
+        Assert.IsTrue(tot == new DNSName("www.powerdns.com."));
+        // 确保没有修改原先已经创建的对象的值
+        Assert.IsTrue(dn.ToString() == "www.");
+        Assert.IsTrue(powerdns.ToString() == "powerdns.com.");
+        dn += powerdns;
+        Assert.IsTrue(dn.ToString() == "www.powerdns.com.");
     }
 
     [TestMethod]
@@ -128,6 +139,7 @@ public class DNSNameTest
             // String empty; Assert.IsTrue(new DNSName(empty) == name);
             Assert.IsTrue(!name.Empty());
             Assert.IsTrue(name == rootnodot);
+            Assert.IsTrue(name.CountLabels() == 0);
         }
     }
 
@@ -168,5 +180,44 @@ public class DNSNameTest
         Assert.IsTrue(labels[0].SequenceEqual("Donald E. Eastlake 3rd"u8.ToArray()));
         Assert.IsTrue(labels[^1].SequenceEqual("example"u8.ToArray()));
         Assert.IsTrue(labels.Count == 2);
+    }
+
+
+    [TestMethod]
+    public void TrimTest()
+    {
+        var w = new DNSName("www.powerdns.com.");
+        Assert.IsTrue(w.CountLabels() == 3);
+        w.TrimToLabels(2);
+        Assert.IsTrue(w.ToString() == "powerdns.com.");
+        var w2 = new DNSName("powerdns.com.");
+        Assert.IsTrue(w == w2);
+    }
+    
+    // TODO: 这个函数就是有问题, 但是考虑到用不上所有就先不修改了
+    [TestMethod]
+    public void ToDNSStringTest()
+    {
+        var w = new DNSName("www.powerdns.com.");
+        var a = w.ToDNSString();
+        Console.WriteLine(a);
+        Assert.IsTrue(w.ToDNSString() == @"\003www\010powerdns\003com\000");
+    }
+
+    [TestMethod]
+    public void EmptyDNSNameTest()
+    {
+        var empty = new DNSName();
+        Assert.ThrowsException<IndexOutOfRangeException>(() => empty.ToString());
+        Assert.ThrowsException<IndexOutOfRangeException>(() => empty.ToStringWithoutTrailPoint());
+        Assert.ThrowsException<IndexOutOfRangeException>(() => empty.ToDNSString());
+        Assert.IsTrue(empty.Empty());
+        Assert.IsTrue(!empty.IsRoot());
+        Assert.IsTrue(empty == empty);
+        // BOOST_CHECK(!(empty < empty)); // TODO: DNSName 之间的比较没有实现
+        var root = new DNSName(".");
+        //  BOOST_CHECK(empty < root);
+        Assert.ThrowsException<IndexOutOfRangeException>(() => empty.IsInclude(root));
+        Assert.ThrowsException<IndexOutOfRangeException>(() => root.IsInclude(empty));
     }
 }

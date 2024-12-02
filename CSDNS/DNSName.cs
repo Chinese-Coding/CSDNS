@@ -100,6 +100,16 @@ public class DNSName
         return stringBuilder.ToString();
     }
 
+    // 这个函数在参考项目中叫做 `toStringNoDot`
+    public String ToStringWithoutTrailPoint() => ToString(separator: "", trailing: false);
+
+    public String ToDNSString()
+    {
+        if (Empty())
+            throw new IndexOutOfRangeException("尝试对一个没有设定值的 DNSName 进行打印操作");
+        return Encoding.UTF8.GetString(name);
+    }
+
     /// <summary>
     /// 获取一个 DNSName 的所有标签; 使用 Bute[] 进行存储, 而不是像原来项目一样使用字符串进行存储
     /// </summary>
@@ -119,21 +129,27 @@ public class DNSName
         return ret;
     }
 
-    public Boolean Include(DNSName other) => IsInclude(other);
-
     /// <summary>
     /// 判断当前域名是否含有另一个域名; 使用这个方法替换了参考项目里面的 `isPartOf` 因为我觉得这个写的不是很好
-    /// TODO: 感觉这个函数的命名不是很合适, 希望以后能改进
+    /// 这个函数调用了函数 `Include`, 但是对空的判断则大有不同, 这也是为了和参考项目一致
     /// </summary>
-    /// <param name="other">另外一个域名</param>
+    /// <param name="parent">另外一个域名</param>
     /// <returns></returns>
-    public Boolean IsInclude(DNSName other)
+    public Boolean IsInclude(DNSName parent)
+    {
+        if (parent.Empty() || Empty())
+            throw new IndexOutOfRangeException("尝试对一个没有设定值的 DNSName 进行判断");
+        return Include(parent);
+    }
+
+
+    public Boolean Include(DNSName other)
     {
         // 这些 if 条件判断, 有的是用来加速判断, 有的是真有用
         // 自己一定包含自己 
         if (this == other) return true;
-        // 一定包含空和 Root (包含 root 的前提是自己非空)
-        if (other.Empty() || (!Empty() && other.IsRoot())) return true;
+        // 一定包含空和 Root (两者的前提是自己一定非空)
+        if (!Empty() && (other.Empty() || other.IsRoot())) return true;
         // 长的不可能包含短的 (包括 label 的个数)
         if (name.Length < other.name.Length || offsets.Length < other.offsets.Length) return false;
         for (var i = 1; i <= other.offsets.Length; i++)
@@ -160,6 +176,21 @@ public class DNSName
     }
 
     public static Boolean operator !=(DNSName lhs, DNSName rhs) => !(lhs == rhs);
+
+    public static DNSName operator +(DNSName lhs, DNSName rhs)
+    {
+        // 创建合并后的name和offsets数组
+        var newName = new byte[lhs.name.Length + rhs.name.Length - 1];
+        Array.Copy(lhs.name, newName, lhs.name.Length - 1); // 最后那个 0 不能复制进来
+        Array.Copy(rhs.name, 0, newName, lhs.name.Length - 1, rhs.name.Length);
+
+        var newOffsets = new int[lhs.offsets.Length + rhs.offsets.Length];
+        Array.Copy(lhs.offsets, newOffsets, lhs.offsets.Length);
+        for (var i = 0; i < rhs.offsets.Length; i++)
+            newOffsets[lhs.offsets.Length + i] = rhs.offsets[i] + lhs.name.Length - 1;
+        return new DNSName { name = newName, offsets = newOffsets };
+    }
+
 
     public Boolean Empty() => name.Length == 0;
 
@@ -286,14 +317,28 @@ public class DNSName
         offsets = offsetsList.ToArray();
         return this;
     }
-    
+
     public Int32 GetLabelCount() => offsets.Length;
 
     public Int32 CountLabels() => offsets.Length; // TODO: 这个函数纯纯是为了和参考项目中函数名对应才写的, 以后有机会删除它
     
+    // @fmt:off
+    public void TrimToLabels(UInt32 to) { while (CountLabels() > to && ChopOff()) { } }
+    // @fmt:on
+
+    public Boolean IsRoot() => name.Length != 0 && name[0] == EndByte;
+
+    /// <summary>
+    /// 检查是否为通配型 DNSName
+    /// </summary>
+    public Boolean IsWildcard()
+    {
+        if (name.Length < 2) return false;
+        return name[0] == 1 && name[1] == (Byte)'*';
+    }
+
     private Boolean IsDigit(Byte b) => b is >= (Byte)'0' and <= (Byte)'9';
 
-    private Boolean IsRoot() => name[0] == EndByte;
 
     /// <summary>
     ///  将一个 Byte 数组中的 DNSName 标签转换为字符串. 等价于参考项目中的 `appendEscapedLabel` 函数
@@ -420,5 +465,17 @@ public class DNSName
         retName.Add(0); // 添加尾随零
 
         return new Tuple<Byte[], Int32[]>(retName.ToArray(), retOffsets.ToArray());
+    }
+
+    // TODO: 因为 name 和 offset 都是使用数组进行存储的, 所以这些拼接和剪切函数, 总要创建新的数组, 看上去不是那么高效
+    //      因为是在单例测试时使用到的函数, 所以暂时先写在这里. 后面看如果业务中用不到的话, 就直接删除掉
+    private Boolean ChopOff()
+    {
+        if (Empty() || IsRoot())
+            return false;
+        var skipLength = name[0] + 1;
+        name = name.Skip(skipLength).ToArray();
+        offsets = offsets.Skip(1).Select(v => v - skipLength).ToArray();
+        return true;
     }
 }
